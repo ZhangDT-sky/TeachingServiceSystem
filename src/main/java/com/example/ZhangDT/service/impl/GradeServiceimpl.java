@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
-public class GradeServiceimpl implements GradeService {
+public class GradeServiceImpl implements GradeService {
 
     @Autowired
     GradeMapper gradeMapper;

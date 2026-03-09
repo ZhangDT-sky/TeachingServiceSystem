@@ -75,7 +75,7 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     return ResponseMessage.success("选课请求已提交，结果稍后可查");
                 default:
                     throw new RuntimeException("未知的脚本返回值: " + result);
-
+                
 
             }
 

@@ -4,7 +4,7 @@ import com.example.ZhangDT.bean.exam.Classroom;
 import com.example.ZhangDT.bean.exam.Exam;
 import com.example.ZhangDT.bean.exam.ExamSchedule;
 import com.example.ZhangDT.bean.exam.StudentExam;
-import com.example.ZhangDT.service.examArrangeService;
+import com.example.ZhangDT.service.ExamArrangeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 
 @Service
-public class ExamArrangeServiceimpl implements examArrangeService {
+public class ExamArrangeServiceImpl implements ExamArrangeService {
 
     private static final Logger logger = LoggerFactory.getLogger(ExamArrangeServiceimpl.class);
 

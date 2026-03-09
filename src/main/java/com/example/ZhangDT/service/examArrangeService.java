@@ -7,7 +7,7 @@ import com.example.ZhangDT.bean.exam.StudentExam;
 
 import java.util.List;
 
-public interface examArrangeService {
+public interface ExamArrangeService {
 
     List<ExamSchedule> arrangeExams(List<Exam> exams,
                                     List<StudentExam> studentExams ,

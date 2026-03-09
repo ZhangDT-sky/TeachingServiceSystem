@@ -3,7 +3,7 @@ package com.example.ZhangDT.controller;
 
 import com.example.ZhangDT.bean.College;
 import com.example.ZhangDT.core.ResponseMessage;
-import com.example.ZhangDT.service.CollegeeService;
+import com.example.ZhangDT.service.CollegeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +15,7 @@ import java.util.List;
 public class CollegeController {
 
     @Autowired
-    CollegeeService collegeeService;
+    CollegeService collegeeService;
 
     @GetMapping("/list")
     public ResponseMessage<List<College>> getAllCollege(){

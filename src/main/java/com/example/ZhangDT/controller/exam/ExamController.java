@@ -1,4 +1,4 @@
-package com.example.ZhangDT.controller.examcontroller;
+package com.example.ZhangDT.controller.exam;
 
 import com.example.ZhangDT.bean.exam.ArrangeRequest;
 import com.example.ZhangDT.bean.exam.Exam;
@@ -7,7 +7,7 @@ import com.example.ZhangDT.bean.exam.StudentExam;
 import com.example.ZhangDT.core.ResponseMessage;
 import com.example.ZhangDT.service.ClassroomService;
 import com.example.ZhangDT.service.ExamService;
-import com.example.ZhangDT.service.examArrangeService;
+import com.example.ZhangDT.service.ExamArrangeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -19,7 +19,7 @@ public class ExamController {
     private ExamService examService;
 
     @Autowired
-    private examArrangeService examArrangeService;
+    private ExamArrangeService examArrangeService;
 
     @Autowired
     private ClassroomService classroomService;

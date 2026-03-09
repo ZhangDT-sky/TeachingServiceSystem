@@ -5,7 +5,7 @@ import com.example.ZhangDT.bean.College;
 
 import java.util.List;
 
-public interface CollegeeService {
+public interface CollegeService {
 
     List getAllcollege();
 

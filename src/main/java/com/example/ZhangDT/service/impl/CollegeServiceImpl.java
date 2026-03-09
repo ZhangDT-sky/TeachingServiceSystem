@@ -3,7 +3,7 @@ package com.example.ZhangDT.service.impl;
 import com.alibaba.fastjson2.JSON;
 import com.example.ZhangDT.bean.College;
 import com.example.ZhangDT.mapper.CollegeMapper;
-import com.example.ZhangDT.service.CollegeeService;
+import com.example.ZhangDT.service.CollegeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
-public class CollegeServiceImpl implements CollegeeService {
+public class CollegeServiceImpl implements CollegeService {
 
     @Autowired
     CollegeMapper collegeMapper;

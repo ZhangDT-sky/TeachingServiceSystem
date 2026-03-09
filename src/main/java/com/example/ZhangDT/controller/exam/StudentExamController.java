@@ -1,4 +1,4 @@
-package com.example.ZhangDT.controller.examcontroller;
+package com.example.ZhangDT.controller.exam;
 
 import com.example.ZhangDT.bean.exam.StudentExam;
 import com.example.ZhangDT.service.StudentExamService;
@@ -8,7 +8,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/studentExam")
-public class StudentExamComtroller {
+public class StudentExamController {
     @Autowired
     private StudentExamService studentExamService;
 
