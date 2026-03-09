@@ -256,7 +256,7 @@ mvn spring-boot:run
     │   ├── GradeController.java            # 成绩控制器
     │   ├── ClassScheduleController.java    # 课表控制器
     │   ├── ExportController.java           # 导出控制器
-    │   └── examcontroller                  # 考试相关控制器
+    │   └── exam                            # 考试相关控制器
     ├── core                                # 核心类
     │   └── ResponseMessage.java            # 统一响应格式
     ├── mapper                              # Mapper 接口
