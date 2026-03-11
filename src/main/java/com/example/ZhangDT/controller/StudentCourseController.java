@@ -3,6 +3,7 @@ package com.example.ZhangDT.controller;
 import com.example.ZhangDT.bean.StudentCourse;
 import com.example.ZhangDT.core.ResponseMessage;
 import com.example.ZhangDT.service.StudentCourseService;
+import com.example.ZhangDT.annotation.RateLimit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,11 +14,13 @@ public class StudentCourseController {
     @Autowired
     private StudentCourseService studentCourseService;
 
+    @RateLimit(key = "ratelimit:student:", replenishRate = 2, burstCapacity = 5)
     @PostMapping("/select")
     public ResponseMessage<String> selectCourse(@RequestBody StudentCourse sc) {
         return studentCourseService.selectCourse(sc.getStudentId(),sc.getCourseId(),sc.getSemesterYear(),String.valueOf(sc.getSemesterTime()));
     }
 
+    @RateLimit(key = "ratelimit:student:drop:", replenishRate = 2, burstCapacity = 5)
     @PostMapping("/drop")
     public ResponseMessage<String> dropCourse(@RequestBody StudentCourse sc) {
         return studentCourseService.dropCourse(sc.getStudentId(),sc.getCourseId(),sc.getSemesterYear(),String.valueOf(sc.getSemesterTime()));
