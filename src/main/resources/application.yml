@@ -11,6 +11,17 @@ spring:
     port: 6379
     database: 0
     # password: # 如果有密码就写，没有可以省略
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 10
 
 
 mybatis-plus:

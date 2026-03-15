@@ -21,17 +21,21 @@ public class StudentCourseConsumer {
     private StringRedisTemplate redisTemplate;
 
     @RabbitListener(queues = {"course.select.queue0","course.select.queue1","course.select.queue2"})
-    public void selectCourse(Map<String,Object> msg){
+    public void selectCourse(Map<String,Object> msg, com.rabbitmq.client.Channel channel, 
+                             @org.springframework.messaging.handler.annotation.Header(org.springframework.amqp.support.AmqpHeaders.DELIVERY_TAG) long tag){
         try {
             String studentId = msg.get("studentId").toString();
             Integer courseId = Integer.valueOf(msg.get("courseId").toString());
             String semesterYear = msg.get("semesterYear") != null ? msg.get("semesterYear").toString() : null;
             Integer semesterTime = msg.get("semesterTime") != null ? Integer.valueOf(msg.get("semesterTime").toString()) : null;
+            
             if(studentCourseMapper.exists(studentId, courseId)) {
                 redisTemplate.opsForValue().increment("course:" + courseId + ":capacity", 1);
                 logger.info("重复选课拦截: studentId={}, courseId={}", studentId, courseId);
+                channel.basicAck(tag, false);
                 return;
             }
+            
             StudentCourse sc = new StudentCourse();
             sc.setStudentId(studentId);
             sc.setCourseId(courseId);
@@ -39,16 +43,24 @@ public class StudentCourseConsumer {
             sc.setSemesterTime(semesterTime);
             studentCourseMapper.insert(sc);
             redisTemplate.opsForSet().add("student:" + studentId + ":courses",courseId.toString());
+            
             logger.info("选课成功: studentId={}, courseId={}", studentId, courseId);
+            // 手动确认消息
+            channel.basicAck(tag, false);
         } catch (Exception e) {
-            Integer courseId = Integer.valueOf(msg.get("courseId").toString());
-            redisTemplate.opsForValue().increment("course:" + courseId + ":capacity", 1);
             logger.error("选课消费异常: {}", msg, e);
+            try {
+                // 消息处理失败，重新入队
+                channel.basicNack(tag, false, true);
+            } catch (java.io.IOException ioException) {
+                logger.error("消息拒绝异常: {}", ioException.getMessage());
+            }
         }
     }
 
     @RabbitListener(queues = {"course.drop.queue"})
-    public void dropCourse(Map<String,Object> msg){
+    public void dropCourse(Map<String,Object> msg, com.rabbitmq.client.Channel channel,
+                           @org.springframework.messaging.handler.annotation.Header(org.springframework.amqp.support.AmqpHeaders.DELIVERY_TAG) long tag){
         try {
             String studentId = msg.get("studentId").toString();
             Integer courseId = Integer.valueOf(msg.get("courseId").toString());
@@ -59,8 +71,15 @@ public class StudentCourseConsumer {
             redisTemplate.opsForValue().increment("course:" + courseId + ":capacity", 1);
             redisTemplate.opsForSet().remove("student:"+studentId+":courses", courseId.toString());
             logger.info("退课处理: studentId={}, courseId={}, 删除记录数={}", studentId, courseId, affected);
+            // 手动确认消息
+            channel.basicAck(tag, false);
         } catch (Exception e) {
             logger.error("退课消费异常: {}", msg, e);
+            try {
+                channel.basicNack(tag, false, true);
+            } catch (java.io.IOException ioException) {
+                logger.error("消息拒绝异常: {}", ioException.getMessage());
+            }
         }
     }
 }
