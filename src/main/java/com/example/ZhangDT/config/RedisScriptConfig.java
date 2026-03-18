@@ -41,8 +41,7 @@ public class RedisScriptConfig {
                         "end\n" +
                         "\n" +
                         "redis.call('SREM', studentKey, courseId)\n" +
-                        "redis.call('INCR', capacityKey)\n" +
-                        "return 1";  // 退课成功
+                        "return 1";  // 退课成功，不再立刻恢复库存，由消费者统一处理
 
         return RedisScript.of(script, Long.class);
     }
