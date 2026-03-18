@@ -2,6 +2,7 @@ package com.example.ZhangDT.consumer;
 
 import com.example.ZhangDT.bean.StudentCourse;
 import com.example.ZhangDT.mapper.StudentCourseMapper;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.slf4j.Logger;
@@ -17,7 +18,13 @@ import java.util.Map;
  * 监听 course-selection-topic
  */
 @Component
-@RocketMQMessageListener(topic = "course-selection-topic", consumerGroup = "course-consumer-group")
+@RocketMQMessageListener(
+        topic = "course-selection-topic",
+        consumerGroup = "course-consumer-group",
+        // 顺序消费模式：保证同一 Queue 中的消息（即同一 studentId+courseId 的选/退课操作）
+        // 由单一线程按发送顺序严格消费，彻底解决高频来回操作的乱序导致的数据一致性漏洞
+        consumeMode = ConsumeMode.ORDERLY
+)
 public class RocketMQStudentCourseConsumer implements RocketMQListener<Map<String, Object>> {
 
     private static final Logger logger = LoggerFactory.getLogger(RocketMQStudentCourseConsumer.class);

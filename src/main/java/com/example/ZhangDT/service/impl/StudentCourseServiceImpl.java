@@ -87,14 +87,20 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                             Collections.singletonList("course.select.seq"),
                             String.valueOf(3));
                     String queue = "course.select.queue" + seq;
-                    // 主方案：RocketMQ 版本发送
+                    // 主方案：RocketMQ 顺序消息发送
+                    // 使用 studentId+courseId 作为分区 Key，保证同一学生对同一课程的操作
+                    // (选课/退课) 被路由到同一个 Queue，消费端单线程顺序处理，彻底避免乱序
+                    String orderKey = studentId + "-" + courseId;
                     try {
-                        rocketMQTemplate.convertAndSend(ROCKETMQ_TOPIC + ":select", msg);
-                        logger.info("选课请求已提交 (RocketMQ 为主): studentId={}, courseId={}, topic={}, msgId={}", studentId, courseId, ROCKETMQ_TOPIC, selectMsgId);
-                        
+                        rocketMQTemplate.syncSendOrderly(
+                                ROCKETMQ_TOPIC + ":select",
+                                org.springframework.messaging.support.MessageBuilder.withPayload(msg).build(),
+                                orderKey);
+                        logger.info("选课请求已顺序提交 (RocketMQ): studentId={}, courseId={}, key={}, msgId={}", studentId, courseId, orderKey, selectMsgId);
+
                         // 备用方案：RabbitMQ (当前注释)
                         // rabbitTemplate.convertAndSend(queue, msg);
-                        
+
                         return ResponseMessage.success("选课请求已提交，结果稍后可查");
                     } catch (Exception e) {
                         logger.error("MQ发送异常，回滚选课Redis库存: studentId={}, courseId={}", studentId, courseId, e);
@@ -155,10 +161,15 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     msg.put("type", "drop");
 
                     String queue = "course.drop.queue";
-                    // 主方案：RocketMQ 版本发送
+                    // 主方案：RocketMQ 顺序消息发送
+                    // 与选课使用相同的 orderKey，保证退课消息进入同一个 Queue，与选课严格顺序
+                    String orderKey = studentId + "-" + courseId;
                     try {
-                        rocketMQTemplate.convertAndSend(ROCKETMQ_TOPIC + ":drop", msg);
-                        logger.info("退课请求已提交 (RocketMQ 为主): studentId={}, courseId={}, topic={}, msgId={}", studentId, courseId, ROCKETMQ_TOPIC, dropMsgId);
+                        rocketMQTemplate.syncSendOrderly(
+                                ROCKETMQ_TOPIC + ":drop",
+                                org.springframework.messaging.support.MessageBuilder.withPayload(msg).build(),
+                                orderKey);
+                        logger.info("退课请求已顺序提交 (RocketMQ): studentId={}, courseId={}, key={}, msgId={}", studentId, courseId, orderKey, dropMsgId);
 
                         // 备用方案：RabbitMQ (当前注释)
                         // rabbitTemplate.convertAndSend(queue, msg);
@@ -166,7 +177,6 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                         return ResponseMessage.success("退课请求已提交，结果稍后可查询");
                     } catch (Exception e) {
                         logger.error("MQ发送异常，回滚退课Redis库存拦截标记: studentId={}, courseId={}", studentId, courseId, e);
-                        // 因为新的Lua退课脚本SREM移除了标记，且不再立刻恢复容量，所以若发送MQ失败，必须回滚这个SADD
                         redisTemplate.opsForSet().add("student:" + studentId + ":courses", courseId.toString());
                         return ResponseMessage.fail("系统繁忙，提交退课请求失败，请稍后重试");
                     }
