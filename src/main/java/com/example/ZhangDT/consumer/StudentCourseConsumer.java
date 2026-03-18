@@ -20,6 +20,14 @@ public class StudentCourseConsumer {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    /**
+     * MQ 选课消费者异步落库实锤流水线：
+     * 1. 全局防重锁 (Idempotency)：依凭 `msg_consumed:msgId` 的存在性鉴别纯 MQ 波动投递，如果遇上直接丢弃 Ack，绝不去碰库存。
+     * 2. 漏网排异：走一次底表 `exists`，一旦命中代表存在“缓存意外失效的穿透新请求”，由于其又在预处理瞎扣了 1 票名额，系统对其执行补偿放生（`increment`+1名额还库）再抛弃。
+     * 3. 落地入册：确认无虞，调用 MyBatis 刻下正式表单 `insert`。
+     * 4. 并发深层结界：就算有外挂以毫秒差撞开了前卫漏过 `exists`，MySQL 表索引的硬隔离也会把这个双胞胎挤作 `DataIntegrityViolationException`。捕获这个报错后，明白这占坑无效，系统随即顺水推舟把该次扣下的预留名额再还给票池！
+     * 5. 结案封印：确认完工落户抑或退还容错后，给该单号印上寿命并向 MQ 发达 BasicAck 断后。
+     */
     @RabbitListener(queues = {"course.select.queue0","course.select.queue1","course.select.queue2"})
     public void selectCourse(Map<String,Object> msg, com.rabbitmq.client.Channel channel, 
                              @org.springframework.messaging.handler.annotation.Header(org.springframework.amqp.support.AmqpHeaders.DELIVERY_TAG) long tag){
@@ -96,6 +104,13 @@ public class StudentCourseConsumer {
         }
     }
 
+    /**
+     * MQ 退课消费者异步退库放量流水线：
+     * 1. 第一级防重拦网：检测 `msg_consumed:`，杜绝因 MQ 迷茫期引发的炒冷饭导致多添量，挡之。
+     * 2. 原理级物理出局：强压进底层实行 `delete` 行级硬删操作。
+     * 3. 极严谨点算余额：严正监控数据库被拔除的真实战果 `affected`（受影响记录）。当且仅当确实验证了（>0）抹去了老用户位置时，才准许将其化为极其宝贵的 1 颗流转火种库存容量（`+1`），放入票池放归系统。
+     * 4. 打扫录事：做单据登记完工印签，回应 BasicAck 彻毕全单作业。
+     */
     @RabbitListener(queues = {"course.drop.queue"})
     public void dropCourse(Map<String,Object> msg, com.rabbitmq.client.Channel channel,
                            @org.springframework.messaging.handler.annotation.Header(org.springframework.amqp.support.AmqpHeaders.DELIVERY_TAG) long tag){

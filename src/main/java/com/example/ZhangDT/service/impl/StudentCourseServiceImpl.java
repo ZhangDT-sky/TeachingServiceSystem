@@ -32,6 +32,16 @@ public class StudentCourseServiceImpl implements StudentCourseService {
     @Autowired
     private RedisScript<Long> seqCourseScript;
 
+    /**
+     * 选课业务预处理与异步发车流程：
+     * 1. 生成独一无二的 msgId：用于后续整个链路防重复监控。
+     * 2. 执行原子化 Lua 脚本进行初步校验：
+     *    - 拦截判重：检查集合中是否已有该学生（SISMEMBER），若是则返回 0 拒绝。
+     *    - 拦截超卖：查验课程可分配容量（capacity），不足则返回 1 拒绝。
+     *    - 预扣库存：校验通过后，进行原子的容量扣除（DECR）以及加入已选集合（SADD），返回 2 成功。
+     * 3. 推入MQ排队区：组装涵盖（唯一单据、学号、课号）的消息体推派至 RabbitMQ。
+     * 4. 高可用兜底补偿：如果在发 MQ 瞬间因为网络等崩溃报错，Catch 区块会立刻逆向回退刚才 Lua 对 Redis 扣去的名额和登记，确保绝不少卖，并向前端返回报错重试提示。
+     */
     @Override
     public ResponseMessage<String> selectCourse(String studentId, Integer courseId, String semesterYear,
             String semesterTime) {
@@ -94,6 +104,15 @@ public class StudentCourseServiceImpl implements StudentCourseService {
         }
     }
 
+    /**
+     * 退课业务预处理与异步发车流程：
+     * 1. 同理生成独一无二的单据 msgId 防止消费者重复接收执行。
+     * 2. 执行原子化 Lua 退课脚本：
+     *    - 只做限选核验（SISMEMBER 判断若未选课则直接返回 0）。
+     *    - 通过后，仅负责将他移除排重合集（SREM），此时【绝对不立即增加库存 capacity】，将库存的主动权交给落库安全的消费者。
+     * 3. 打包推入 RabbitMQ 进行队列递交实施查删。
+     * 4. 同等异常兜底：若投递该网络发生异常，由于 Lua 没有加量，所以只需要利用 SADD 强制把其状态恢复至已选即可，安全防损。
+     */
     @Override
     public ResponseMessage<String> dropCourse(String studentId, Integer courseId, String semesterYear,
             String semesterTime) {
