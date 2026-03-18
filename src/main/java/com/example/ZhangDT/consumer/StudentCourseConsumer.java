@@ -20,7 +20,7 @@ public class StudentCourseConsumer {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
-    @RabbitListener(queues = {"course.select.queue0","course.select.queue1","course.select.queue2"})
+    // @RabbitListener(queues = {"course.select.queue0","course.select.queue1","course.select.queue2"})
     public void selectCourse(Map<String,Object> msg, com.rabbitmq.client.Channel channel, 
                              @org.springframework.messaging.handler.annotation.Header(org.springframework.amqp.support.AmqpHeaders.DELIVERY_TAG) long tag){
         try {
@@ -58,7 +58,7 @@ public class StudentCourseConsumer {
         }
     }
 
-    @RabbitListener(queues = {"course.drop.queue"})
+    // @RabbitListener(queues = {"course.drop.queue"})
     public void dropCourse(Map<String,Object> msg, com.rabbitmq.client.Channel channel,
                            @org.springframework.messaging.handler.annotation.Header(org.springframework.amqp.support.AmqpHeaders.DELIVERY_TAG) long tag){
         try {

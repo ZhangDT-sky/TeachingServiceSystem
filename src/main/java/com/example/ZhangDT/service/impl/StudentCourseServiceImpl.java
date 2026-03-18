@@ -32,6 +32,11 @@ public class StudentCourseServiceImpl implements StudentCourseService {
     @Autowired
     private RedisScript<Long> seqCourseScript;
 
+    @Autowired
+    private org.apache.rocketmq.spring.core.RocketMQTemplate rocketMQTemplate;
+
+    private static final String ROCKETMQ_TOPIC = "course-selection-topic";
+
     @Override
     public ResponseMessage<String> selectCourse(String studentId, Integer courseId, String semesterYear, String semesterTime) {
         try{
@@ -70,8 +75,12 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                             Collections.singletonList("course.select.seq"),
                             String.valueOf(3));
                     String queue = "course.select.queue" + seq;
-                    rabbitTemplate.convertAndSend(queue, msg);
-                    logger.info("选课请求已提交: studentId={}, courseId={}, queue={}", studentId, courseId, queue);
+                    // rabbitTemplate.convertAndSend(queue, msg); // 备用方案：RabbitMQ
+                    
+                    // 主方案：RocketMQ 版本发送
+                    rocketMQTemplate.convertAndSend(ROCKETMQ_TOPIC + ":select", msg);
+                    
+                    logger.info("选课请求已提交 (RocketMQ 为主): studentId={}, courseId={}, topic={}", studentId, courseId, ROCKETMQ_TOPIC);
                     return ResponseMessage.success("选课请求已提交，结果稍后可查");
                 default:
                     throw new RuntimeException("未知的脚本返回值: " + result);
@@ -118,9 +127,12 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     msg.put("type", "drop");
 
                     String queue = "course.drop.queue";
-                    rabbitTemplate.convertAndSend(queue, msg);
+                    // rabbitTemplate.convertAndSend(queue, msg); // 备用方案：RabbitMQ
 
-                    logger.info("退课请求已提交: studentId={}, courseId={}, queue={}", studentId, courseId, queue);
+                    // 主方案：RocketMQ 版本发送
+                    rocketMQTemplate.convertAndSend(ROCKETMQ_TOPIC + ":drop", msg);
+
+                    logger.info("退课请求已提交 (RocketMQ 为主): studentId={}, courseId={}, topic={}", studentId, courseId, ROCKETMQ_TOPIC);
                     return ResponseMessage.success("退课请求已提交，结果稍后可查询");
                 default:
                     throw new RuntimeException("未知的脚本返回值: " + result);

@@ -22,6 +22,12 @@ spring:
       simple:
         acknowledge-mode: manual
         prefetch: 10
+    rocketmq:
+      name-server: localhost:9876
+      producer:
+        group: course-producer-group
+        send-message-timeout: 3000
+        retry-times-when-send-failed: 3
 
 
 mybatis-plus:
