@@ -4,6 +4,7 @@ import com.example.ZhangDT.bean.CourseSelect;
 import com.example.ZhangDT.bean.Course;
 import com.example.ZhangDT.core.ResponseMessage;
 import com.example.ZhangDT.service.CourseSelectService;
+import com.example.ZhangDT.annotation.RateLimit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -21,20 +22,17 @@ public class CourseSelectController {
     @PostMapping("/add")
     public ResponseMessage<String> addCourseOfferMajor(@RequestBody CourseSelect courseSelect) {
         boolean saved = courseSelectService.save(courseSelect);
-
-        // 初始化Redis容量
-        redisTemplate.opsForValue().set("course:"+ courseSelect.getCourseId()+":capacity", String.valueOf(courseSelect.getCourseCount()));
         if(saved){
-            // 初始化Redis容量
+            // 初始化 Redis 容量 (通过 Lua 脚本预扣的前提是这里必须有初始值)
             redisTemplate.opsForValue().set("course:"+ courseSelect.getCourseId()+":capacity", String.valueOf(courseSelect.getCourseCount()));
             courseSelectService.insert(courseSelect);
             return ResponseMessage.success("发布成功");
-
         }
         return ResponseMessage.fail("发布失败");
     }
 
     // 2. 学生查询自己可选课程
+    @RateLimit(key = "ratelimit:availableCourses:", replenishRate = 10, burstCapacity = 20)
     @GetMapping("/available")
     public ResponseMessage<List<Course>> getAvailableCourses(@RequestParam Integer majorId,
                                                             @RequestParam String semesterYear,
