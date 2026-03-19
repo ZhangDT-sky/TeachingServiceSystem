@@ -35,19 +35,33 @@ public class RateLimitAspect {
         int burstCapacity = rateLimit.burstCapacity();
         int requestedTokens = rateLimit.requestedTokens();
 
-        // 尝试从请求参数中获取 studentId 或其他标识构建唯一 Key
+        // 1. 尝试从请求参数中获取 studentId
         String key = keyPrefix;
         Object[] args = point.getArgs();
+        boolean studentIdFound = false;
         if (args != null && args.length > 0) {
-            Object arg = args[0];
+            for (Object arg : args) {
+                if (arg == null) continue;
+                try {
+                    Method getStudentIdMethod = arg.getClass().getMethod("getStudentId");
+                    Object studentIdObj = getStudentIdMethod.invoke(arg);
+                    if (studentIdObj != null) {
+                        key = keyPrefix + studentIdObj.toString();
+                        studentIdFound = true;
+                        break;
+                    }
+                } catch (Exception ignore) {}
+            }
+        }
+
+        // 2. 如果没找到 studentId，降级到使用 IP 地址作为限流 Key
+        if (!studentIdFound) {
             try {
-                Method getStudentIdMethod = arg.getClass().getMethod("getStudentId");
-                Object studentIdObj = getStudentIdMethod.invoke(arg);
-                if (studentIdObj != null) {
-                    key = keyPrefix + studentIdObj.toString();
-                }
+                jakarta.servlet.http.HttpServletRequest request = ((org.springframework.web.context.request.ServletRequestAttributes) 
+                        org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()).getRequest();
+                String ip = request.getRemoteAddr();
+                key = keyPrefix + ip;
             } catch (Exception e) {
-                // 如果参数对象没有 getStudentId 方法，使用默认后缀
                 key = keyPrefix + "default";
             }
         }
