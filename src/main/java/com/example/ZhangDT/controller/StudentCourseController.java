@@ -16,13 +16,13 @@ public class StudentCourseController {
 
     @RateLimit(key = "ratelimit:student:", replenishRate = 2, burstCapacity = 5)
     @PostMapping("/select")
-    public ResponseMessage<String> selectCourse(@RequestBody StudentCourse sc) {
+    public ResponseMessage<String> selectCourse(@jakarta.validation.Valid @RequestBody StudentCourse sc) {
         return studentCourseService.selectCourse(sc.getStudentId(),sc.getCourseId(),sc.getSemesterYear(),String.valueOf(sc.getSemesterTime()));
     }
 
     @RateLimit(key = "ratelimit:student:drop:", replenishRate = 2, burstCapacity = 5)
     @PostMapping("/drop")
-    public ResponseMessage<String> dropCourse(@RequestBody StudentCourse sc) {
+    public ResponseMessage<String> dropCourse(@jakarta.validation.Valid @RequestBody StudentCourse sc) {
         return studentCourseService.dropCourse(sc.getStudentId(),sc.getCourseId(),sc.getSemesterYear(),String.valueOf(sc.getSemesterTime()));
     }
 
