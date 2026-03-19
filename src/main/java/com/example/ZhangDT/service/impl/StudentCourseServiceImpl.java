@@ -44,8 +44,8 @@ public class StudentCourseServiceImpl implements StudentCourseService {
      *    - 拦截判重：检查集合中是否已有该学生（SISMEMBER），若是则返回 0 拒绝。
      *    - 拦截超卖：查验课程可分配容量（capacity），不足则返回 1 拒绝。
      *    - 预扣库存：校验通过后，进行原子的容量扣除（DECR）以及加入已选集合（SADD），返回 2 成功。
-     * 3. 推入MQ排队区：组装涵盖（唯一单据、学号、课号）的消息体推派至 RabbitMQ。
-     * 4. 高可用兜底补偿：如果在发 MQ 瞬间因为网络等崩溃报错，Catch 区块会立刻逆向回退刚才 Lua 对 Redis 扣去的名额和登记，确保绝不少卖，并向前端返回报错重试提示。
+     * 3. 推入MQ顺序排队区：使用 studentId+courseId 作为分区 Key，利用 RocketMQ 顺序消息保证同一动作的绝对时序。
+     * 4. 高可用兜底补偿：如果在发送 RocketMQ 瞬间因为网络等崩溃报错，Catch 区块会立刻逆向回退刚才 Lua 对 Redis 扣去的名额和登记，确保绝不少卖。
      */
     @Override
     public ResponseMessage<String> selectCourse(String studentId, Integer courseId, String semesterYear,
@@ -61,8 +61,8 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     courseId.toString());
 
             if (result == null) {
-                logger.info("redis 脚本执行失败");
-                throw new RuntimeException("redis 脚本执行失败");
+                logger.error("Redis 选课脚本执行返回空结果，可能由于连接超时或脚本环境异常: studentId={}, courseId={}", studentId, courseId);
+                return ResponseMessage.fail("系统繁忙（Redis异常），请稍后重试");
             }
             switch (result.intValue()) {
                 case 0: // 已选过课程
@@ -125,8 +125,8 @@ public class StudentCourseServiceImpl implements StudentCourseService {
      * 2. 执行原子化 Lua 退课脚本：
      *    - 只做限选核验（SISMEMBER 判断若未选课则直接返回 0）。
      *    - 通过后，仅负责将他移除排重合集（SREM），此时【绝对不立即增加库存 capacity】，将库存的主动权交给落库安全的消费者。
-     * 3. 打包推入 RabbitMQ 进行队列递交实施查删。
-     * 4. 同等异常兜底：若投递该网络发生异常，由于 Lua 没有加量，所以只需要利用 SADD 强制把其状态恢复至已选即可，安全防损。
+     * 3. 打包推入 RocketMQ 顺序队列：通过与选课一致的 Key 保证“选->退”动作被同一个 Consumer 线程串行处理，彻底消除竞争风险。
+     * 4. 同等异常兜底：若投递该网络发生异常，由于 Lua 没有加量，所以只需要利用 SADD 强制把其状态恢复至已选即可。
      */
     @Override
     public ResponseMessage<String> dropCourse(String studentId, Integer courseId, String semesterYear,
@@ -143,8 +143,8 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     courseId.toString());
 
             if (result == null) {
-                logger.info("redis 脚本执行失败");
-                throw new RuntimeException("redis 脚本执行失败");
+                logger.error("Redis 退课脚本执行返回空结果，可能由于连接超时或脚本环境异常: studentId={}, courseId={}", studentId, courseId);
+                return ResponseMessage.fail("系统繁忙（Redis异常），请稍后重试");
             }
             switch (result.intValue()) {
                 case 0:
