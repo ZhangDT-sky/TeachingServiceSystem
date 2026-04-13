@@ -35,10 +35,78 @@ public class RocketMQStudentCourseConsumer implements RocketMQListener<Map<Strin
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    private static final long OP_SEQ_TTL_SECONDS = 7 * 24 * 3600L;
+
+    private static class OutOfOrderMessageException extends RuntimeException {
+        OutOfOrderMessageException(String message) {
+            super(message);
+        }
+    }
+
+    private String opLastKey(String studentId, Integer courseId) {
+        return "course:oplast:" + studentId + ":" + courseId;
+    }
+
+    private String opSkipKey(String studentId, Integer courseId, long opSeq) {
+        return "course:opskip:" + studentId + ":" + courseId + ":" + opSeq;
+    }
+
+    private long parseOpSeq(Map<String, Object> msg) {
+        Object raw = msg.get("opSeq");
+        if (raw == null) {
+            return 0L;
+        }
+        if (raw instanceof Number) {
+            return ((Number) raw).longValue();
+        }
+        try {
+            return Long.parseLong(raw.toString());
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+    private long getLastOpSeq(String studentId, Integer courseId) {
+        String text = redisTemplate.opsForValue().get(opLastKey(studentId, courseId));
+        if (text == null || text.isBlank()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(text);
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+    private long advanceSkippedOps(String studentId, Integer courseId, long current) {
+        long cursor = current;
+        while (true) {
+            long next = cursor + 1;
+            String key = opSkipKey(studentId, courseId, next);
+            if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+                break;
+            }
+            redisTemplate.delete(key);
+            cursor = next;
+        }
+        if (cursor != current) {
+            redisTemplate.opsForValue().set(
+                    opLastKey(studentId, courseId),
+                    String.valueOf(cursor),
+                    OP_SEQ_TTL_SECONDS,
+                    java.util.concurrent.TimeUnit.SECONDS
+            );
+        }
+        return cursor;
+    }
+
     @Override
     public void onMessage(Map<String, Object> msg) {
         String msgId = msg.get("msgId") != null ? msg.get("msgId").toString() : null;
         String type = msg.get("type") != null ? msg.get("type").toString() : "select";
+        String studentId = msg.get("studentId").toString();
+        Integer courseId = Integer.valueOf(msg.get("courseId").toString());
+        long opSeq = parseOpSeq(msg);
         
         // 幂等去重：检查此 msgId 是否已被成功消费过
         if (msgId != null && Boolean.TRUE.equals(redisTemplate.hasKey("msg_consumed:" + msgId))) {
@@ -47,6 +115,25 @@ public class RocketMQStudentCourseConsumer implements RocketMQListener<Map<Strin
         }
 
         try {
+            if (opSeq > 0) {
+                long last = getLastOpSeq(studentId, courseId);
+                last = advanceSkippedOps(studentId, courseId, last);
+
+                if (opSeq <= last) {
+                    logger.info("[RocketMQ] 过期/重复序列消息忽略: studentId={}, courseId={}, opSeq={}, last={}",
+                            studentId, courseId, opSeq, last);
+                    if (msgId != null) {
+                        redisTemplate.opsForValue().set("msg_consumed:" + msgId, "1", 24, java.util.concurrent.TimeUnit.HOURS);
+                    }
+                    return;
+                }
+                if (opSeq > last + 1) {
+                    throw new OutOfOrderMessageException(
+                            "opSeq gap detected, expected=" + (last + 1) + ", actual=" + opSeq
+                    );
+                }
+            }
+
             if ("select".equals(type)) {
                 handleSelect(msg, msgId);
             } else if ("drop".equals(type)) {
@@ -57,6 +144,19 @@ public class RocketMQStudentCourseConsumer implements RocketMQListener<Map<Strin
             if (msgId != null) {
                 redisTemplate.opsForValue().set("msg_consumed:" + msgId, "1", 24, java.util.concurrent.TimeUnit.HOURS);
             }
+            if (opSeq > 0) {
+                redisTemplate.opsForValue().set(
+                        opLastKey(studentId, courseId),
+                        String.valueOf(opSeq),
+                        OP_SEQ_TTL_SECONDS,
+                        java.util.concurrent.TimeUnit.SECONDS
+                );
+                advanceSkippedOps(studentId, courseId, opSeq);
+            }
+        } catch (OutOfOrderMessageException oe) {
+            logger.warn("[RocketMQ] 乱序消息暂缓处理，等待前序消息: studentId={}, courseId={}, opSeq={}, reason={}",
+                    studentId, courseId, opSeq, oe.getMessage());
+            throw oe;
         } catch (Exception e) {
             logger.error("[RocketMQ] 消费异常: type={}, msgId={}", type, msgId, e);
             // 处理重试逻辑

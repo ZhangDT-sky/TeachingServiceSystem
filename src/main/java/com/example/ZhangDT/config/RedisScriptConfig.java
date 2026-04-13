@@ -56,6 +56,22 @@ public class RedisScriptConfig {
     }
 
     @Bean
+    public RedisScript<Long> selectRollbackScript() {
+        String script =
+                "local studentKey = KEYS[1]\n" +
+                "local capacityKey = KEYS[2]\n" +
+                "local courseId = ARGV[1]\n" +
+                "\n" +
+                "if redis.call('SISMEMBER', studentKey, courseId) == 1 then\n" +
+                "    redis.call('SREM', studentKey, courseId)\n" +
+                "    redis.call('INCR', capacityKey)\n" +
+                "    return 1\n" +
+                "end\n" +
+                "return 0";
+        return RedisScript.of(script, Long.class);
+    }
+
+    @Bean
     public RedisScript<Long> rateLimitScript() {
         String script = 
             "local key = KEYS[1]\n" +

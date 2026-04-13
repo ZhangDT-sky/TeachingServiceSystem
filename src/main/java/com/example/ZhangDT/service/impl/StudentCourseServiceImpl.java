@@ -33,9 +33,21 @@ public class StudentCourseServiceImpl implements StudentCourseService {
     private RedisScript<Long> seqCourseScript;
 
     @Autowired
+    private RedisScript<Long> selectRollbackScript;
+
+    @Autowired
     private org.apache.rocketmq.spring.core.RocketMQTemplate rocketMQTemplate;
 
     private static final String ROCKETMQ_TOPIC = "course-selection-topic";
+    private static final long OP_SEQ_TTL_SECONDS = 7 * 24 * 3600L;
+
+    private String opSeqKey(String studentId, Integer courseId) {
+        return "course:opseq:" + studentId + ":" + courseId;
+    }
+
+    private String opSkipKey(String studentId, Integer courseId, long opSeq) {
+        return "course:opskip:" + studentId + ":" + courseId + ":" + opSeq;
+    }
 
     /**
      * 选课业务预处理与异步发车流程：
@@ -75,12 +87,18 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     // 发送异步消息处理后续逻辑
                     Map<String, Object> msg = new HashMap<>();
                     String selectMsgId = UUID.randomUUID().toString();
+                    Long opSeq = redisTemplate.opsForValue().increment(opSeqKey(studentId, courseId));
+                    if (opSeq == null) {
+                        // 兜底：不阻断流程，使用当前秒时间戳避免空值
+                        opSeq = System.currentTimeMillis() / 1000;
+                    }
                     msg.put("msgId", selectMsgId);
                     msg.put("studentId", studentId);
                     msg.put("courseId", courseId);
                     msg.put("semesterYear", semesterYear);
                     msg.put("semesterTime", semesterTime);
                     msg.put("type", "select");
+                    msg.put("opSeq", opSeq);
 
                     Long seq = redisTemplate.execute(
                             seqCourseScript,
@@ -104,8 +122,19 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                         return ResponseMessage.success("选课请求已提交，结果稍后可查");
                     } catch (Exception e) {
                         logger.error("MQ发送异常，回滚选课Redis库存: studentId={}, courseId={}", studentId, courseId, e);
-                        redisTemplate.opsForValue().increment("course:" + courseId + ":capacity", 1);
-                        redisTemplate.opsForSet().remove("student:" + studentId + ":courses", courseId.toString());
+                        Long rollbackResult = redisTemplate.execute(
+                                selectRollbackScript,
+                                keys,
+                                courseId.toString()
+                        );
+                        redisTemplate.opsForValue().set(
+                                opSkipKey(studentId, courseId, opSeq),
+                                "1",
+                                OP_SEQ_TTL_SECONDS,
+                                java.util.concurrent.TimeUnit.SECONDS
+                        );
+                        logger.info("选课发送失败后执行原子回滚完成: studentId={}, courseId={}, rollbackResult={}",
+                                studentId, courseId, rollbackResult);
                         return ResponseMessage.fail("系统繁忙，提交选课请求失败，请稍后重试");
                     }
                 default:
@@ -153,12 +182,17 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                 case 1:// 退课成功
                     Map<String, Object> msg = new HashMap<>();
                     String dropMsgId = UUID.randomUUID().toString();
+                    Long opSeq = redisTemplate.opsForValue().increment(opSeqKey(studentId, courseId));
+                    if (opSeq == null) {
+                        opSeq = System.currentTimeMillis() / 1000;
+                    }
                     msg.put("msgId", dropMsgId);
                     msg.put("studentId", studentId);
                     msg.put("courseId", courseId);
                     msg.put("semesterYear", semesterYear);
                     msg.put("semesterTime", semesterTime);
                     msg.put("type", "drop");
+                    msg.put("opSeq", opSeq);
 
                     String queue = "course.drop.queue";
                     // 主方案：RocketMQ 顺序消息发送
@@ -178,6 +212,12 @@ public class StudentCourseServiceImpl implements StudentCourseService {
                     } catch (Exception e) {
                         logger.error("MQ发送异常，回滚退课Redis库存拦截标记: studentId={}, courseId={}", studentId, courseId, e);
                         redisTemplate.opsForSet().add("student:" + studentId + ":courses", courseId.toString());
+                        redisTemplate.opsForValue().set(
+                                opSkipKey(studentId, courseId, opSeq),
+                                "1",
+                                OP_SEQ_TTL_SECONDS,
+                                java.util.concurrent.TimeUnit.SECONDS
+                        );
                         return ResponseMessage.fail("系统繁忙，提交退课请求失败，请稍后重试");
                     }
                 default:
